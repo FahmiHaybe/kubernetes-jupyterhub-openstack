@@ -1,4 +1,3 @@
-# Got help from ChatGPT
 [all]
 {% for host in groups['master_nodes'] %}
 k-master-{{ loop.index0 }} ansible_host={{ host }} ip={{ host }} ansible_user=ubuntu

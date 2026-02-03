@@ -2,7 +2,7 @@
 # Main variables file for Kubernetes deployment
 
 # Base paths and directories
-base_path: ~/infrastructure-script-backup
+base_path: ~/kubernetes-jupyterhub-openstack
 project_dir: project-2
 terraform_working_dir: "{{ base_path }}/{{ project_dir }}"
 cluster_keypair_dir: "{{ terraform_working_dir }}/cluster_keypairs"
