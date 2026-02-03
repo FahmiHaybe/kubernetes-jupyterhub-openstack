@@ -1,0 +1,80 @@
+---
+- name: Manage all SSH keys
+  hosts: localhost
+  vars_files:
+    - "../vars/main.yaml"
+  tags: [ssh]
+
+  tasks:
+    - name: Download Bruno’s GitHub key
+      get_url:
+        url: https://github.com/brunodzogovic.keys
+        dest: /tmp/brunodzogovic.key
+        mode: '0644'
+
+- name: Deploy user and cluster SSH keys
+  hosts: master_nodes:worker_nodes
+  become: true
+  vars_files:
+    - "../vars/main.yaml"
+  tags: [ssh]
+
+  tasks:
+    - name: Add Bruno’s key to ubuntu
+      authorized_key:
+        user: ubuntu
+        key: "{{ lookup('file', '/tmp/brunodzogovic.key') }}"
+
+    - name: Add Group's keys to ubuntu
+      authorized_key:
+        user: ubuntu
+        key: "{{lookup('file', terraform_working_dir+'/group.key')}}"
+        
+
+- name: Generate and share cluster keypair
+  hosts: master_nodes
+  become: true
+  vars_files:
+    - "../vars/main.yaml"
+  tags: [ssh]
+
+  tasks:
+    - name: Ensure ~/.ssh present
+      file:
+        path: /home/ubuntu/.ssh
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0700'
+
+    - name: Generate keypair
+      openssh_keypair:
+        path: /home/ubuntu/.ssh/id_rsa
+        type: rsa
+        size: 4096
+      register: kp
+
+    - name: Save public key fact
+      set_fact:
+        cluster_pub: "{{ kp.public_key }}"
+
+- name: Distribute cluster public key to all nodes
+  hosts: master_nodes:worker_nodes
+  become: true
+  vars_files:
+    - "../vars/main.yaml"
+  tags: [ssh]
+
+  tasks:
+    - name: Ensure ~/.ssh present
+      file:
+        path: /home/ubuntu/.ssh
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0700'
+
+    - name: Authorize cluster key
+      authorized_key:
+        user: ubuntu
+        key: "{{ hostvars[groups['master_nodes'][0]].cluster_pub }}"

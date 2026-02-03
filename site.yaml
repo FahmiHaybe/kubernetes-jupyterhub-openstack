@@ -1,0 +1,7 @@
+---
+# Run the whole end-to-end deployment
+- import_playbook: playbooks/01-infra-terraform.yaml
+- import_playbook: playbooks/02-cluster-kubespray.yaml
+- import_playbook: playbooks/03-ssh-keys.yaml
+- import_playbook: playbooks/04-helm-services.yaml
+- import_playbook: playbooks/05-velero.yaml

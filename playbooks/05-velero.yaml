@@ -1,0 +1,110 @@
+---
+- name: Setup Velero and MinIO for Kubernetes backup
+  hosts: master_nodes
+  become: true
+  vars:
+    minio_namespace: minio
+    minio_access_key: minioadmin
+    minio_secret_key: minioadmin
+    minio_storage_size: 2Gi
+    minio_storage_class: local-path
+    minio_cpu_limit: "100m"
+    minio_memory_limit: "128Mi"
+    minio_cpu_request: "50m"
+    minio_memory_request: "64Mi"
+
+  tasks:
+    - name: Install Helm
+      shell: |
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod +x get_helm.sh
+        ./get_helm.sh
+      args:
+        chdir: /tmp
+      environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      register: helm_install
+      changed_when: false
+      failed_when: helm_install.rc != 0 and 'Helm v3' not in helm_install.stdout
+
+    - name: Add MinIO Helm repo
+      shell: |
+        helm repo list | grep -q '^minio\s' || helm repo add minio https://charts.min.io/
+      args:
+        executable: /bin/bash
+      register: add_repo_result
+      changed_when: "'has been added' in add_repo_result.stdout or add_repo_result.rc == 0"
+
+    - name: Create namespace for MinIO
+      kubernetes.core.k8s:
+        state: present
+        resource_definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ minio_namespace }}"
+
+    - name: Deploy MinIO via Helm
+      kubernetes.core.helm:
+        name: minio
+        chart_ref: minio/minio
+        release_namespace: "{{ minio_namespace }}"
+        create_namespace: true
+        values:
+          mode: standalone
+          replicas: 1
+          rootUser: "{{ minio_access_key }}"
+          rootPassword: "{{ minio_secret_key }}"
+          persistence:
+            enabled: true
+            size: "{{ minio_storage_size }}"
+            storageClass: "{{ minio_storage_class }}"
+          resources:
+            limits:
+              cpu: "{{ minio_cpu_limit }}"
+              memory: "{{ minio_memory_limit }}"
+            requests:
+              cpu: "{{ minio_cpu_request }}"
+              memory: "{{ minio_memory_request }}"
+        wait: true
+
+    - name: Wait for MinIO pod to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ minio_namespace }}"
+      register: minio_pods
+      until: minio_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length > 0
+      retries: 10
+      delay: 15
+
+    - name: Create Velero credentials file
+      copy:
+        dest: /tmp/credentials-velero
+        content: |
+          [default]
+          aws_access_key_id = {{ minio_access_key }}
+          aws_secret_access_key = {{ minio_secret_key }}
+        mode: '0600'
+
+    - name: Install Velero CLI
+      shell: |
+        curl -LO https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
+        tar -xvf velero-v1.13.0-linux-amd64.tar.gz
+        mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+        chmod +x /usr/local/bin/velero
+      args:
+        chdir: /tmp
+
+    - name: Install Velero with MinIO integration
+      shell: >
+        velero install \
+        --provider aws \
+        --plugins velero/velero-plugin-for-aws:v1.8.0 \
+        --bucket velero \
+        --secret-file /tmp/credentials-velero \
+        --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio.minio.svc.cluster.local:9000 \
+        --use-volume-snapshots=false
+      environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+      args:
+        executable: /bin/bash

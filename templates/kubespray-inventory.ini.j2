@@ -1,0 +1,20 @@
+# Got help from ChatGPT
+[all]
+{% for host in groups['master_nodes'] %}
+k-master-{{ loop.index0 }} ansible_host={{ host }} ip={{ host }} ansible_user=ubuntu
+{% endfor %}
+{% for host in groups['worker_nodes'] %}
+k-worker-{{ loop.index0 }} ansible_host={{ host }} ip={{ host }} ansible_user=ubuntu
+{% endfor %}
+[kube_control_plane]
+{% for host in groups['master_nodes'] %}
+k-master-{{loop.index0}}
+{% endfor %}
+
+[etcd:children]
+kube_control_plane
+
+[kube_node]
+{% for host in groups['worker_nodes'] %}
+k-worker-{{ loop.index0 }}
+{% endfor %}

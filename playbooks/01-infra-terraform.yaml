@@ -1,0 +1,63 @@
+---
+- name: Provision infrastructure with Terraform
+  hosts: localhost
+  vars_files:
+    - "../vars/main.yaml"
+  tags: [terraform]
+
+  pre_tasks:
+    - name: Ensure terraform and jq are installed
+      command: "which {{ item }}"
+      with_items:
+        - terraform
+        - jq
+      register: chk
+      changed_when: false
+      failed_when: chk.rc != 0
+
+  tasks:
+    - name: Create working dirs
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ terraform_working_dir }}"
+        - "{{ kubespray_inventory_dir }}"
+
+    - name: Terraform init & apply
+      community.general.terraform:
+        project_path: "{{ terraform_working_dir }}"
+        state: present
+      register: tf_out
+
+    - name: Extract master IPs
+      shell: terraform output -json master_ips | jq -r '.[]'
+      args: { chdir: "{{ terraform_working_dir }}" }
+      register: master_ips
+      changed_when: false
+
+    - name: Extract worker IPs
+      shell: terraform output -json worker_ips | jq -r '.[]'
+      args: { chdir: "{{ terraform_working_dir }}" }
+      register: worker_ips
+      changed_when: false
+
+
+    - name: Add master nodes dynamically
+      add_host:
+        name: "{{ item }}"
+        groups: master_nodes
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        ansible_user: "ubuntu"
+      loop: "{{ master_ips.stdout_lines }}"
+      changed_when: false
+
+    - name: Add worker nodes dynamically
+      add_host:
+        name: "{{ item }}"
+        groups: worker_nodes
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        ansible_user: "ubuntu"
+      loop: "{{ worker_ips.stdout_lines }}"
+      changed_when: false

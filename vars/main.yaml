@@ -1,0 +1,20 @@
+---
+# Main variables file for Kubernetes deployment
+
+# Base paths and directories
+base_path: ~/infrastructure-script-backup
+project_dir: project-2
+terraform_working_dir: "{{ base_path }}/{{ project_dir }}"
+cluster_keypair_dir: "{{ terraform_working_dir }}/cluster_keypairs"
+
+# Kubespray configuration
+kubespray_dir: "{{ terraform_working_dir }}/kubespray"
+kubespray_inventory_dir: "{{ kubespray_dir }}/inventory/mycluster"
+kubespray_inventory: "{{ kubespray_inventory_dir }}/inventory.ini"
+
+# User configuration
+user_pki_dir: /etc/kubernetes/pki/users
+users:
+  - alice
+  - tim
+  - janet
